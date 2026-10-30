@@ -6,13 +6,13 @@
 
 1. Убедитесь, что репозиторий **Public** (Settings → General → Danger Zone → Change repository visibility).
 2. Откройте Settings → Pages.
-3. В разделе **Build and deployment** выберите **Deploy from a branch**, ветку `main`, папку `/(root)`; нажмите Save.
+3. В разделе **Build and deployment** выберите **GitHub Actions**; сборку выполняет `.github/workflows/deploy-pages.yml`.
 4. После завершения публикации сайт обычно доступен по адресу `https://zephyr363.github.io/korean-house-waiter-dashboard/`. Это ожидаемый адрес, а не подтверждение доступности.
 5. В Firebase Authentication → Settings → Authorized domains добавьте `zephyr363.github.io` при необходимости.
 
 ## Firebase: подключение общих чеков
 
-Firebase-проект: `korean-house-dashboard`. Клиентская конфигурация уже встроена в `index.html`. Секретный администраторский ключ сайту не нужен.
+Firebase-проект: `korean-house-dashboard`. Клиентская конфигурация подставляется GitHub Actions при сборке и не хранится в текущем `index.html`. Секретный администраторский ключ сайту не нужен.
 
 1. Откройте Firebase Console → **Authentication** → Sign-in method → включите **Email/Password**.
 2. В **Authentication → Users** создайте учётную запись каждого официанта (email и временный пароль). Не публикуйте пароли в репозитории.
@@ -53,26 +53,39 @@ Firebase-проект: `korean-house-dashboard`. Клиентская конфи
 
 **Ограничения существующей версии:** Security Rules не пересчитывают математически итог чека из вложенного массива позиций, поэтому авторизованный сотрудник с доступом на редактирование технически может отправить искажённые данные вне интерфейса. Используйте этот продукт как учебный/операционный прототип, не как фискальную систему.
 
-## GitHub Actions CI/CD — конфигурация Firebase без значений в исходном коде
+## GitHub Actions Secrets and Variables
 
-С октября 2026 конфигурация Firebase **не хранится в актуальном `index.html`**. Файл `firebase-config.js` генерируется во время GitHub Actions deploy из секрета. В git находятся только шаблон сайта, скрипт и workflow.
+Исходный код **не содержит** Firebase config. Во время CI/CD скрипт `scripts/build.py` читает переменные окружения GitHub Actions и генерирует `dist/firebase-config.js`.
 
-### 1. Добавьте Actions secret
+### Secrets — скрываемое значение
 
-Repository → **Settings → Secrets and variables → Actions → New repository secret**
+[Settings → Secrets and variables → Actions](https://github.com/zephyr363/korean-house-waiter-dashboard/settings/secrets/actions) → **Repository secrets** → New repository secret
 
-Name: `FIREBASE_CONFIG_JSON`
+| Name | Value |
+| --- | --- |
+| `FIREBASE_API_KEY` | API key из Firebase Console → Project settings → Your apps → Web App |
 
-Value: валидный JSON-объект Firebase Web App configuration (только содержимое `{ ... }`, без `const firebaseConfig =`, импортов и комментариев). Поля: `apiKey`, `authDomain`, `projectId`, `storageBucket`, `messagingSenderId`, `appId`, при наличии `measurementId`.
+### Variables — конфигурация Firebase
 
-### 2. Включите GitHub Actions для GitHub Pages
+На той же странице перейдите в **Variables** → New repository variable.
 
-Repository → **Settings → Pages → Build and deployment → Source → GitHub Actions**.
+| Name | Value из Firebase конфигурации |
+| --- | --- |
+| `FIREBASE_AUTH_DOMAIN` | `authDomain` |
+| `FIREBASE_PROJECT_ID` | `projectId` — должен быть `korean-house-dashboard` |
+| `FIREBASE_STORAGE_BUCKET` | `storageBucket` (необязательно) |
+| `FIREBASE_MESSAGING_SENDER_ID` | `messagingSenderId` |
+| `FIREBASE_APP_ID` | `appId` |
+| `FIREBASE_MEASUREMENT_ID` | `measurementId` (необязательно) |
 
-После сохранения запустите workflow **Actions → Deploy Korean House to GitHub Pages → Run workflow**. Каждый push в `main` тоже вызывает деплой.
+Не добавляйте старый `FIREBASE_CONFIG_JSON`: он больше не используется.
 
-### 3. Что можно и нельзя скрыть
+### Публикация
 
-GitHub Actions Secret не попадёт в коммиты исходного кода, однако готовый `firebase-config.js` будет **публичным** в GitHub Pages, поскольку браузер должен получить эту конфигурацию. Это штатный механизм Firebase Web SDK, а не хранение закрытого серверного ключа. Правила безопасности Firestore и Firebase Auth обязательны. Старые версии файла с Firebase Web API key остаются в истории GitHub; это не позволяет сделать ключ секретным. Проверьте API restrictions, а при необходимости создайте новый ограниченный Web API key.
+1. GitHub → Settings → Pages → **Build and deployment → Source = GitHub Actions**.
+2. В разделе [Actions](https://github.com/zephyr363/korean-house-waiter-dashboard/actions) выберите **Deploy Korean House to GitHub Pages** → **Run workflow**.
+3. При каждом push в `main` сборка запускается автоматически. Если обязательное значение отсутствует, сборка завершится с сообщением о названии пропущенной переменной, **без печати значений**.
 
-**Не храните настоящие секреты** (Firebase Admin SDK service account JSON, приватные ключи, пароли, токены с доступом на запись) в таком файле — их нельзя отдавать браузеру. Для серверных секретов требуется backend (Cloud Functions/Cloud Run) и Secret Manager.
+### Важно о безопасности
+
+Данные не записаны в git, но **`dist/firebase-config.js` публикуется на GitHub Pages и доступен всем через браузер** — это стандартная клиентская конфигурация Firebase Web SDK. Это не способ сделать Web API key секретным от пользователей. Настоящие серверные секреты нельзя передавать браузеру: их хранят на backend/Secret Manager. Доступ к Firestore нужно ограничивать Security Rules и Auth. API key следует ограничить нужными API в Google Cloud Console; для снижения злоупотреблений можно дополнительно рассмотреть App Check. Старое значение Web API key остаётся в истории GitHub, даже после удаления из последнего коммита.
