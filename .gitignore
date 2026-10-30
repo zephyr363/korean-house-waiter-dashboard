@@ -1,0 +1,8 @@
+# Runtime config is created only in GitHub Actions; never commit generated artifacts
+/dist/
+/firebase-config.js
+.env
+.env.*
+!.env.example
+serviceAccountKey.json
+*service-account*.json
