@@ -1,29 +1,49 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function staffAllowed() {
-      return request.auth != null
+    function signedIn() {
+      return request.auth != null;
+    }
+    function staff() {
+      return signedIn()
         && exists(/databases/$(database)/documents/staff/$(request.auth.uid))
         && get(/databases/$(database)/documents/staff/$(request.auth.uid)).data.active == true;
     }
+    function admin() {
+      return staff()
+        && get(/databases/$(database)/documents/staff/$(request.auth.uid)).data.role == 'admin';
+    }
+    function validReceipt() {
+      let d = request.resource.data;
+      return d.keys().hasAll(['created', 'createdBy', 'createdByEmail', 'lines', 'total', 'status', 'updatedAt'])
+        && d.keys().hasOnly(['created', 'createdBy', 'createdByEmail', 'lines', 'total', 'status', 'updatedAt'])
+        && d.created is string && d.created.size() <= 40
+        && d.createdBy is string && d.createdBy.size() <= 128
+        && d.createdByEmail is string && d.createdByEmail.size() <= 320
+        && d.lines is list && d.lines.size() >= 1 && d.lines.size() <= 60
+        && d.total is number && d.total >= 0 && d.total <= 100000000
+        && d.status == 'open'
+        && d.updatedAt is timestamp
+        && d.updatedAt == request.time;
+    }
     match /staff/{uid} {
-      allow read: if request.auth != null && request.auth.uid == uid;
-      allow write: if false;
+      allow get: if signedIn() && request.auth.uid == uid;
+      allow list, create, update, delete: if false;
     }
     match /receipts/{receiptId} {
-      allow read: if staffAllowed();
-      allow create: if staffAllowed()
+      allow get, list: if staff();
+      allow create: if staff()
+        && validReceipt()
         && request.resource.data.createdBy == request.auth.uid
-        && request.resource.data.status == 'open'
-        && request.resource.data.lines is list
-        && request.resource.data.total is number;
-      allow update: if staffAllowed()
-        && request.resource.data.createdBy == resource.data.createdBy
-        && request.resource.data.created == resource.data.created
-        && request.resource.data.lines is list
-        && request.resource.data.total is number;
-      allow delete: if staffAllowed();
+        && request.resource.data.createdByEmail == request.auth.token.email;
+      allow update: if staff()
+        && validReceipt()
+        && resource.data.status == 'open'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lines','total','updatedAt']);
+      allow delete: if admin();
     }
-    match /{document=**} {allow read, write: if false;}
+    match /{document=**} {
+      allow read, write: if false;
+    }
   }
 }
