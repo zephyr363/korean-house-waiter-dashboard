@@ -119,6 +119,17 @@ $('#retry').onclick=()=>begin(shuffle([...lastPool]));$('#wrongRetry').onclick=(
 <section id="receiptScreen" aria-label="Работа с чеками">
 <div class="rcWrap">
   <header class="rcHead"><div><h1 class="rcTitle">🧾 Korean House · Чеки</h1><div class="rcSmall">Поиск блюд, формирование чеков и пересчёт суммы</div></div><button id="rcClose" class="rcBtn rcGhost">← К тесту</button></header>
+  <div id="khGate" class="rcBox" style="margin-bottom:16px;display:block">
+<h2 style="margin:0 0 9px;font-size:18px">🔐 Доступ к общим чекам</h2>
+<p id="khGateStatus" class="rcSmall">Подключение к Firebase…</p>
+<form id="khLoginForm" style="display:flex;flex-wrap:wrap;gap:9px;margin-top:12px">
+<input required type="email" id="khEmail" class="rcInput" style="flex:1 1 190px;width:auto" placeholder="Email сотрудника" autocomplete="username">
+<input required type="password" id="khPassword" class="rcInput" style="flex:1 1 160px;width:auto" placeholder="Пароль" autocomplete="current-password">
+<button class="rcBtn" id="khSignIn" type="submit">Войти</button>
+<button class="rcBtn rcGhost" id="khSignOut" type="button">Выйти</button>
+</form>
+<div class="rcSmall" style="margin-top:9px">Доступ открывает администратор. Регистрация новых сотрудников на сайте отключена.</div>
+</div>
   <nav class="rcTabs"><button class="rcTab selected" id="rcTabEdit">Создание чека</button><button class="rcTab" id="rcTabList">Активные чеки <span id="rcCount"></span></button></nav>
   <div id="rcEditView" class="rcGrid">
     <section class="rcBox"><h2 style="margin:0 0 12px;font-size:19px">Поиск по меню</h2><input id="rcSearch" class="rcInput" placeholder="Введите название блюда…" autocomplete="off"><div class="rcSmall" style="margin-top:8px">Нажмите на блюдо — оно сразу добавится в текущий чек.</div><div id="rcResults" class="rcResults"></div></section>
@@ -135,9 +146,16 @@ const KEY='kh_receipts_v1';
 const el=id=>document.getElementById(id);
 const money=n=>new Intl.NumberFormat('ru-RU').format(n)+' ₸';
 let saved;try{saved=JSON.parse(localStorage.getItem(KEY))}catch(e){}
-let state=(saved&&Array.isArray(saved.checks))?saved:{checks:[],draft:null,nextId:1};
+let state={checks:[],draft:saved?.draft||null,nextId:saved?.nextId||1};
 let selectedId=null,tab='edit';
-const persist=()=>{try{localStorage.setItem(KEY,JSON.stringify(state))}catch(e){}};
+const persist=()=>{
+ try{localStorage.setItem(KEY,JSON.stringify({draft:state.draft,nextId:state.nextId}))}catch(e){}
+ if(selectedId!==null){const c=state.checks.find(x=>x.id===selectedId);if(c&&window.khCloudSave)window.khCloudSave(c).catch(showCloudError)}
+};
+function showCloudError(e){console.error(e);alert('Не удалось сохранить изменения в Firestore: '+(e?.message||e))}
+window.khReceiptSnapshot=(checks)=>{state.checks=checks;render()};
+window.khReceiptUser=(user,approved)=>{window.khApproved=approved;document.getElementById('khGate').style.display=approved?'none':'block';document.getElementById('khGateStatus').textContent=!user?'Войдите в учётную запись официанта.':approved?'':'Аккаунт есть, но доступ не разрешён. Попросите администратора добавить UID в коллекцию staff.';render()};
+window.khReceiptError=showCloudError;
 const itemKey=i=>i.cat+'|'+i.name;
 const hasPrice=i=>typeof i.price==='number'&&Number.isFinite(i.price);
 const current=()=>selectedId===null?state.draft:state.checks.find(c=>c.id===selectedId);
@@ -146,18 +164,18 @@ function ensureDraft(){if(!state.draft)state.draft=newCheck();return state.draft
 function total(c){return c.lines.reduce((s,l)=>s+(typeof l.price==='number'?l.price*l.qty:0),0)}
 function missing(c){return c.lines.some(l=>typeof l.price!=='number')}
 function switchTab(t){tab=t;el('rcEditView').style.display=t==='edit'?'grid':'none';el('rcListView').style.display=t==='list'?'block':'none';el('rcTabEdit').classList.toggle('selected',t==='edit');el('rcTabList').classList.toggle('selected',t==='list');render()}
-function add(i){let c=current()||ensureDraft(),key=itemKey(i),line=c.lines.find(l=>l.key===key);if(line)line.qty++;else c.lines.push({key,name:i.name,cat:i.cat,price:hasPrice(i)?i.price:null,qty:1});persist();render();switchTab('edit')}
-function update(key,delta){let c=current();if(!c)return;let l=c.lines.find(x=>x.key===key);if(!l)return;l.qty+=delta;if(l.qty<=0)c.lines=c.lines.filter(x=>x!==l);persist();render()}
-function changePrice(key){let c=current(),l=c?.lines.find(x=>x.key===key);if(!l)return;let raw=prompt('Цена за 1 порцию (₸):',l.price??'');if(raw===null)return;let n=Number(raw.replace(/\s/g,'').replace(',','.'));if(!Number.isFinite(n)||n<0){alert('Введите корректную цену.');return}l.price=n;persist();render()}
+function add(i){if(selectedId!==null&&!window.khApproved)return alert('Нужен доступ сотрудника');let c=current()||ensureDraft(),key=itemKey(i),line=c.lines.find(l=>l.key===key);if(line)line.qty++;else c.lines.push({key,name:i.name,cat:i.cat,price:hasPrice(i)?i.price:null,qty:1});persist();render();switchTab('edit')}
+function update(key,delta){let c=current();if(!c)return;if(selectedId!==null&&!window.khApproved)return alert('Нужен доступ сотрудника');let l=c.lines.find(x=>x.key===key);if(!l)return;l.qty+=delta;if(l.qty<=0)c.lines=c.lines.filter(x=>x!==l);persist();render()}
+function changePrice(key){let c=current(),l=c?.lines.find(x=>x.key===key);if(!l)return;if(selectedId!==null&&!window.khApproved)return alert('Нужен доступ сотрудника');let raw=prompt('Цена за 1 порцию (₸):',l.price??'');if(raw===null)return;let n=Number(raw.replace(/\s/g,'').replace(',','.'));if(!Number.isFinite(n)||n<0){alert('Введите корректную цену.');return}l.price=n;persist();render()}
 function renderSearch(){let q=el('rcSearch').value.trim().toLocaleLowerCase('ru');let matches=menu.filter(i=>!q||i.name.toLocaleLowerCase('ru').includes(q)).slice(0,40);let host=el('rcResults');host.replaceChildren();if(!matches.length){host.innerHTML='<div class="rcEmpty">Блюдо не найдено</div>';return}matches.forEach(i=>{let row=document.createElement('div');row.className='rcRow';let info=document.createElement('div');let name=document.createElement('strong');name.textContent=i.name;let sub=document.createElement('div');sub.className='rcSmall';sub.textContent=i.cat+' · '+(hasPrice(i)?money(i.price):'Цена не указана');info.append(name,sub);let b=document.createElement('button');b.className='rcBtn';b.textContent='+ Добавить';b.onclick=()=>add(i);row.append(info,b);host.append(row)})}
 function renderEdit(){let c=current();el('rcCurrentTitle').textContent=c?'Чек №'+c.id:'Текущий чек';el('rcDraftBadge').textContent=selectedId===null?'Черновик':'Зарегистрирован';let host=el('rcLines');host.replaceChildren();if(!c||!c.lines.length)host.innerHTML='<div class="rcEmpty">Выберите блюдо в поиске</div>';else c.lines.forEach(l=>{let row=document.createElement('div');row.className='rcRow';let info=document.createElement('div');info.style.flex='1 1 150px';let name=document.createElement('strong');name.textContent=l.name;let sub=document.createElement('div');sub.className='rcSmall';sub.textContent=l.price===null?'Цена не указана':money(l.price)+' × '+l.qty+' = '+money(l.price*l.qty);info.append(name,sub);let qty=document.createElement('div');qty.className='rcQty';let minus=document.createElement('button');minus.textContent='−';minus.title='Уменьшить или удалить';minus.onclick=()=>update(l.key,-1);let num=document.createElement('span');num.textContent=l.qty;let plus=document.createElement('button');plus.textContent='+';plus.onclick=()=>update(l.key,1);let edit=document.createElement('button');edit.textContent='₸';edit.title='Изменить цену';edit.onclick=()=>changePrice(l.key);let del=document.createElement('button');del.textContent='×';del.title='Удалить позицию';del.onclick=()=>{if(confirm('Удалить '+l.name+' из чека?'))update(l.key,-l.qty)};qty.append(minus,num,plus,edit,del);row.append(info,qty);host.append(row)});el('rcTotal').textContent=money(c?total(c):0);el('rcPriceNote').textContent=c&&missing(c)?'⚠ В некоторых позициях цена не указана. Итог без их стоимости. Нажмите ₸, чтобы задать цену.':'';el('rcRegister').style.display=selectedId===null?'block':'none';el('rcNew').textContent=selectedId===null?'Очистить черновик':'Создать новый чек'}
-function renderList(){let host=el('rcList');host.replaceChildren();if(!state.checks.length){host.innerHTML='<div class="rcEmpty">Активных чеков пока нет</div>';return}state.checks.slice().reverse().forEach(c=>{let box=document.createElement('div');box.className='rcRow';let info=document.createElement('div');info.style.flex='1';let title=document.createElement('strong');title.textContent='Чек №'+c.id+' · '+money(total(c));let desc=document.createElement('div');desc.className='rcSmall';desc.textContent=new Date(c.created).toLocaleString('ru-RU')+' · '+c.lines.reduce((n,l)=>n+l.qty,0)+' поз. '+(missing(c)?'· есть позиции без цены':'');info.append(title,desc);let open=document.createElement('button');open.className='rcBtn';open.textContent='Открыть';open.onclick=()=>{selectedId=c.id;switchTab('edit')};let del=document.createElement('button');del.className='rcBtn rcDanger';del.textContent='Удалить';del.onclick=()=>{if(confirm('Удалить чек №'+c.id+'?')){state.checks=state.checks.filter(x=>x.id!==c.id);if(selectedId===c.id)selectedId=null;persist();render()}};box.append(info,open,del);host.append(box)})}
+function renderList(){let host=el('rcList');host.replaceChildren();if(!state.checks.length){host.innerHTML='<div class="rcEmpty">Активных чеков пока нет</div>';return}state.checks.slice().reverse().forEach(c=>{let box=document.createElement('div');box.className='rcRow';let info=document.createElement('div');info.style.flex='1';let title=document.createElement('strong');title.textContent='Чек №'+c.id+' · '+money(total(c));let desc=document.createElement('div');desc.className='rcSmall';desc.textContent=new Date(c.created).toLocaleString('ru-RU')+' · '+c.lines.reduce((n,l)=>n+l.qty,0)+' поз. '+(missing(c)?'· есть позиции без цены':'');info.append(title,desc);let open=document.createElement('button');open.className='rcBtn';open.textContent='Открыть';open.onclick=()=>{selectedId=c.id;switchTab('edit')};let del=document.createElement('button');del.className='rcBtn rcDanger';del.textContent='Удалить';del.onclick=()=>{if(confirm('Удалить чек №'+c.id+'?')){if(!window.khApproved)return alert('Нужен доступ сотрудника');window.khCloudDelete(c.id).catch(showCloudError);state.checks=state.checks.filter(x=>x.id!==c.id);if(selectedId===c.id)selectedId=null;persist();render()}};box.append(info,open,del);host.append(box)})}
 function render(){el('rcCount').textContent='('+state.checks.length+')';renderSearch();renderEdit();renderList()}
 el('receiptLauncher').onclick=()=>{el('receiptScreen').classList.add('active');render();el('rcSearch').focus()};
 el('rcClose').onclick=()=>el('receiptScreen').classList.remove('active');
 el('rcTabEdit').onclick=()=>switchTab('edit');el('rcTabList').onclick=()=>switchTab('list');
 el('rcSearch').oninput=renderSearch;
-el('rcRegister').onclick=()=>{let c=ensureDraft();if(!c.lines.length){alert('Добавьте хотя бы одно блюдо.');return}if(missing(c)&&!confirm('В чеке есть блюда без цены. Зарегистрировать всё равно?'))return;state.checks.push(c);state.draft=null;selectedId=null;persist();switchTab('list')};
+el('rcRegister').onclick=async()=>{if(!window.khApproved){alert('Для регистрации чека войдите в аккаунт с доступом.');return}let c=ensureDraft();if(!c.lines.length){alert('Добавьте хотя бы одно блюдо.');return}if(missing(c)&&!confirm('В чеке есть блюда без цены. Зарегистрировать всё равно?'))return;try{el('rcRegister').disabled=true;await window.khCloudCreate(c);state.draft=null;selectedId=null;persist();switchTab('list')}catch(e){showCloudError(e)}finally{el('rcRegister').disabled=false}};
 el('rcNew').onclick=()=>{if(selectedId===null&&state.draft?.lines.length&&!confirm('Очистить текущий черновик?'))return;selectedId=null;state.draft=null;persist();switchTab('edit')};
 render();
 })();
@@ -206,4 +224,35 @@ const countObserver=new MutationObserver(()=>{document.getElementById('khChecksC
 countObserver.observe(document.getElementById('rcCount'),{childList:true,characterData:true,subtree:true});
 go('training');
 })();
+</script><script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
+import {getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
+import {getFirestore,collection,doc,getDoc,addDoc,deleteDoc,updateDoc,query,orderBy,onSnapshot,serverTimestamp} from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
+const firebaseConfig={apiKey:"AIzaSyDSwOg6Bons-tS1_TAMHw0Aj9FGaRD82bU",authDomain:"korean-house-dashboard.firebaseapp.com",projectId:"korean-house-dashboard",storageBucket:"korean-house-dashboard.firebasestorage.app",messagingSenderId:"290707807400",appId:"1:290707807400:web:66a35a86eeb60bdbaaf69d",measurementId:"G-N0KR7CZRCP"};
+const app=initializeApp(firebaseConfig),auth=getAuth(app),db=getFirestore(app);
+let currentUser=null,approved=false,unsubscribe=null;
+const err=e=>{document.getElementById('khGateStatus').textContent='Ошибка Firebase: '+(e?.message||e);console.error(e)};
+const needUser=()=>{if(!currentUser||!approved)throw Error('Доступ сотрудника не подтверждён')};
+window.khCloudCreate=async c=>{needUser();return addDoc(collection(db,'receipts'),{created:c.created||new Date().toISOString(),createdBy:currentUser.uid,createdByEmail:currentUser.email||'',lines:c.lines,total:c.lines.reduce((n,l)=>n+(Number(l.price)||0)*l.qty,0),status:'open',updatedAt:serverTimestamp()})};
+window.khCloudSave=async c=>{needUser();await updateDoc(doc(db,'receipts',String(c.id)),{lines:c.lines,total:c.lines.reduce((n,l)=>n+(Number(l.price)||0)*l.qty,0),updatedAt:serverTimestamp()})};
+window.khCloudDelete=async id=>{needUser();await deleteDoc(doc(db,'receipts',String(id)))};
+document.getElementById('khLoginForm').addEventListener('submit',async e=>{
+ e.preventDefault();const button=document.getElementById('khSignIn');button.disabled=true;
+ try{await signInWithEmailAndPassword(auth,document.getElementById('khEmail').value.trim(),document.getElementById('khPassword').value)}catch(ex){err(ex)}finally{button.disabled=false}
+});
+document.getElementById('khSignOut').onclick=()=>signOut(auth).catch(err);
+onAuthStateChanged(auth,async user=>{
+ if(unsubscribe){unsubscribe();unsubscribe=null}
+ currentUser=user;approved=false;window.khReceiptSnapshot([]);
+ if(!user){window.khReceiptUser(null,false);return}
+ try{
+  const staff=await getDoc(doc(db,'staff',user.uid));
+  approved=staff.exists()&&staff.data().active===true;
+  window.khReceiptUser(user,approved);
+  if(!approved)return;
+  unsubscribe=onSnapshot(query(collection(db,'receipts'),orderBy('created','desc')),snap=>{
+    window.khReceiptSnapshot(snap.docs.map(d=>({id:d.id,...d.data()})))
+  },err);
+ }catch(ex){err(ex);window.khReceiptUser(user,false)}
+});
 </script></body></html>
