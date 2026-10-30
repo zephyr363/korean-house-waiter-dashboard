@@ -52,3 +52,27 @@ Firebase-проект: `korean-house-dashboard`. Клиентская конфи
 8. Регулярно делайте резервное копирование Firestore. В текущем приложении официанты могут изменять позиции и суммы; для финансово значимых операций нужен защищённый backend с проверкой итогов, журналом аудита и разграничением полномочий.
 
 **Ограничения существующей версии:** Security Rules не пересчитывают математически итог чека из вложенного массива позиций, поэтому авторизованный сотрудник с доступом на редактирование технически может отправить искажённые данные вне интерфейса. Используйте этот продукт как учебный/операционный прототип, не как фискальную систему.
+
+## GitHub Actions CI/CD — конфигурация Firebase без значений в исходном коде
+
+С октября 2026 конфигурация Firebase **не хранится в актуальном `index.html`**. Файл `firebase-config.js` генерируется во время GitHub Actions deploy из секрета. В git находятся только шаблон сайта, скрипт и workflow.
+
+### 1. Добавьте Actions secret
+
+Repository → **Settings → Secrets and variables → Actions → New repository secret**
+
+Name: `FIREBASE_CONFIG_JSON`
+
+Value: валидный JSON-объект Firebase Web App configuration (только содержимое `{ ... }`, без `const firebaseConfig =`, импортов и комментариев). Поля: `apiKey`, `authDomain`, `projectId`, `storageBucket`, `messagingSenderId`, `appId`, при наличии `measurementId`.
+
+### 2. Включите GitHub Actions для GitHub Pages
+
+Repository → **Settings → Pages → Build and deployment → Source → GitHub Actions**.
+
+После сохранения запустите workflow **Actions → Deploy Korean House to GitHub Pages → Run workflow**. Каждый push в `main` тоже вызывает деплой.
+
+### 3. Что можно и нельзя скрыть
+
+GitHub Actions Secret не попадёт в коммиты исходного кода, однако готовый `firebase-config.js` будет **публичным** в GitHub Pages, поскольку браузер должен получить эту конфигурацию. Это штатный механизм Firebase Web SDK, а не хранение закрытого серверного ключа. Правила безопасности Firestore и Firebase Auth обязательны. Старые версии файла с Firebase Web API key остаются в истории GitHub; это не позволяет сделать ключ секретным. Проверьте API restrictions, а при необходимости создайте новый ограниченный Web API key.
+
+**Не храните настоящие секреты** (Firebase Admin SDK service account JSON, приватные ключи, пароли, токены с доступом на запись) в таком файле — их нельзя отдавать браузеру. Для серверных секретов требуется backend (Cloud Functions/Cloud Run) и Secret Manager.
