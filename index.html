@@ -85,13 +85,28 @@ body.khMenuOpen #khShade{display:block;position:fixed;inset:0;background:#0009;z
 #khAuthOverlay #khGateStatus{min-height:20px}
 body.khAuthPending{overflow:hidden}
 @media(max-width:550px){#khAuthOverlay{padding:14px}#khAuthOverlay #khGate{padding:20px 16px}}
+</style><style>
+.khSpinner{display:inline-block;width:18px;height:18px;border:2.5px solid rgba(230,183,110,.25);border-top-color:#e6b76e;border-right-color:#e6b76e;border-radius:50%;animation:khSpin .75s linear infinite;vertical-align:middle;flex-shrink:0}
+.khSpinner.large{width:32px;height:32px;border-width:3px}
+.khSpinner.light{border-color:#16232040;border-top-color:#102126;border-right-color:#102126}
+@keyframes khSpin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.khSpinner{animation-duration:2s}}
+.khLoading{display:flex;align-items:center;justify-content:center;gap:12px;padding:20px;color:#a9bdb9}
+.khAuthProgress{display:flex;align-items:center;gap:10px;font-size:13px;color:#b8c9c4;min-height:26px;margin:12px 0}
+.khAuthProgress[hidden],.khLoading[hidden]{display:none!important}
+.khBusy{opacity:.7;cursor:wait!important}
+.khSpinnerButton{display:inline-flex;align-items:center;justify-content:center;gap:10px}
+.khAuthError{color:#ffb6a8!important;white-space:pre-wrap}
+.khAuthHint{color:#a9bcb6;word-break:break-word;margin-top:8px;font-size:12px}
 </style></head><body class="khAuthPending"><div id="khAuthOverlay" role="dialog" aria-modal="true" aria-labelledby="khAuthTitle"><div class="khAuthInner"><div class="khAuthLogo">KH</div><h1 id="khAuthTitle">Korean House</h1><p class="khAuthIntro">Войдите в систему, чтобы открыть панель официанта</p><div id="khGate" class="rcBox" >
 <h2 style="margin:0 0 9px;font-size:18px">🔐 Вход для сотрудников Korean House</h2>
-<p id="khGateStatus" class="rcSmall">Подключение к Firebase…</p>
+<p id="khGateStatus" class="rcSmall" role="status" aria-live="polite">Подключение к Firebase…</p>
+<div id="khAuthProgress" class="khAuthProgress"><span class="khSpinner"></span><span id="khAuthProgressText">Проверка сессии…</span></div>
+<p id="khAuthHint" class="khAuthHint" aria-live="polite"></p>
 <form id="khLoginForm" style="display:flex;flex-wrap:wrap;gap:9px;margin-top:12px">
 <input required type="email" id="khEmail" class="rcInput" style="flex:1 1 190px;width:auto" placeholder="Email сотрудника" autocomplete="username">
 <input required type="password" id="khPassword" class="rcInput" style="flex:1 1 160px;width:auto" placeholder="Пароль" autocomplete="current-password">
-<button class="rcBtn" id="khSignIn" type="submit">Войти</button>
+<button class="rcBtn khSpinnerButton" id="khSignIn" type="submit"><span id="khLoginSpinner" class="khSpinner light" hidden></span><span id="khLoginText">Войти</span></button>
 
 </form>
 <div class="rcSmall" style="margin-top:9px">Доступ открывает администратор. Регистрация новых сотрудников на сайте отключена.</div>
@@ -149,7 +164,7 @@ $('#retry').onclick=()=>begin(shuffle([...lastPool]));$('#wrongRetry').onclick=(
     <section class="rcBox"><h2 style="margin:0 0 12px;font-size:19px">Поиск по меню</h2><input id="rcSearch" class="rcInput" placeholder="Введите название блюда…" autocomplete="off"><div class="rcSmall" style="margin-top:8px">Нажмите на блюдо — оно сразу добавится в текущий чек.</div><div id="rcResults" class="rcResults"></div></section>
     <section class="rcBox"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><h2 id="rcCurrentTitle" style="margin:0;font-size:19px">Текущий чек</h2><span class="rcBadge" id="rcDraftBadge">Черновик</span></div><div id="rcLines"></div><div class="rcRow"><strong>Итого</strong><strong id="rcTotal">0 ₸</strong></div><div class="rcSmall" id="rcPriceNote"></div><button id="rcRegister" class="rcBtn" style="width:100%;margin-top:14px">Зарегистрировать чек</button><button id="rcNew" class="rcBtn rcGhost" style="width:100%;margin-top:8px">Новый чек</button></section>
   </div>
-  <section id="rcListView" class="rcBox" style="display:none"><h2 style="margin:0 0 12px;font-size:19px">Активные чеки</h2><div id="rcList"></div></section>
+  <section id="rcListView" class="rcBox" style="display:none"><h2 style="margin:0 0 12px;font-size:19px">Активные чеки</h2><div id="rcCloudLoading" class="khLoading" hidden><span class="khSpinner large"></span><span>Загрузка чеков из Firestore…</span></div><div id="rcCloudStatus" class="rcSmall" role="status" aria-live="polite"></div><div id="rcList"></div></section>
 </div></section>
 
 <script>
@@ -168,7 +183,9 @@ const persist=()=>{
 };
 function showCloudError(e){console.error(e);alert('Не удалось сохранить изменения в Firestore: '+(e?.message||e))}
 window.khReceiptSnapshot=(checks)=>{state.checks=checks;render()};
-window.khReceiptUser=(user,approved,role)=>{window.khApproved=approved;window.khRole=role||null;document.getElementById('khAuthOverlay').hidden=!!approved;document.body.classList.toggle('khAuthPending',!approved);document.body.classList.remove('khMenuOpen');document.getElementById('khGateStatus').textContent=!user?'Введите email и пароль сотрудника.':approved?'':'Вход выполнен, но доступ не разрешён. Попросите администратора добавить UID в коллекцию staff.';if(approved)document.getElementById('khPassword').value='';render()};
+window.khReceiptsLoading=(loading,message='')=>{el('rcCloudLoading').hidden=!loading;el('rcCloudStatus').textContent=message;el('rcList').style.display=loading?'none':''};
+window.khReceiptBusy=(busy)=>{el('rcRegister').disabled=!!busy;el('rcRegister').innerHTML=busy?'<span class="khSpinner light"></span> Сохранение чека…':'Зарегистрировать чек';el('rcRegister').classList.toggle('khBusy',!!busy)};
+window.khReceiptUser=(user,approved,role)=>{window.khApproved=approved;window.khRole=role||null;el('khAuthOverlay').hidden=!!approved;document.body.classList.toggle('khAuthPending',!approved);document.body.classList.remove('khMenuOpen');if(approved){el('khPassword').value='';el('khGateStatus').textContent='Доступ разрешён';el('khAuthHint').textContent=''}else if(!user){el('khGateStatus').textContent='Введите email и пароль сотрудника.'}render()};
 window.khReceiptError=showCloudError;
 const itemKey=i=>i.cat+'|'+i.name;
 const hasPrice=i=>typeof i.price==='number'&&Number.isFinite(i.price);
@@ -189,7 +206,7 @@ el('receiptLauncher').onclick=()=>{el('receiptScreen').classList.add('active');r
 el('rcClose').onclick=()=>el('receiptScreen').classList.remove('active');
 el('rcTabEdit').onclick=()=>switchTab('edit');el('rcTabList').onclick=()=>switchTab('list');
 el('rcSearch').oninput=renderSearch;
-el('rcRegister').onclick=async()=>{if(!window.khApproved){alert('Для регистрации чека войдите в аккаунт с доступом.');return}let c=ensureDraft();if(!c.lines.length){alert('Добавьте хотя бы одно блюдо.');return}if(missing(c)&&!confirm('В чеке есть блюда без цены. Зарегистрировать всё равно?'))return;try{el('rcRegister').disabled=true;await window.khCloudCreate(c);state.draft=null;selectedId=null;persist();switchTab('list')}catch(e){showCloudError(e)}finally{el('rcRegister').disabled=false}};
+el('rcRegister').onclick=async()=>{if(!window.khApproved){alert('Для регистрации чека войдите в аккаунт с доступом.');return}let c=ensureDraft();if(!c.lines.length){alert('Добавьте хотя бы одно блюдо.');return}if(missing(c)&&!confirm('В чеке есть блюда без цены. Зарегистрировать всё равно?'))return;try{window.khReceiptBusy(true);await window.khCloudCreate(c);state.draft=null;selectedId=null;persist();switchTab('list')}catch(e){showCloudError(e)}finally{window.khReceiptBusy(false)}};
 el('rcNew').onclick=()=>{if(selectedId===null&&state.draft?.lines.length&&!confirm('Очистить текущий черновик?'))return;selectedId=null;state.draft=null;persist();switchTab('edit')};
 render();
 })();
@@ -245,29 +262,69 @@ import {getFirestore,collection,doc,getDoc,addDoc,deleteDoc,updateDoc,query,orde
 const firebaseConfig=window.__KH_FIREBASE_CONFIG__;
 if(!firebaseConfig){document.getElementById('khGateStatus').textContent='Firebase не настроен. Проверьте FIREBASE_API_KEY в Actions Secrets и остальные FIREBASE_* в Actions Variables, затем запустите публикацию.';throw new Error('Missing Firebase config generated by CI/CD')}
 const app=initializeApp(firebaseConfig),auth=getAuth(app),db=getFirestore(app);
-let currentUser=null,approved=false,unsubscribe=null;
-const err=e=>{document.getElementById('khGateStatus').textContent='Ошибка Firebase: '+(e?.message||e);console.error(e)};
+let currentUser=null,approved=false,unsubscribeReceipts=null,unsubscribeStaff=null,authRevision=0;
+const E=id=>document.getElementById(id);
+function progress(active,message=''){E('khAuthProgress').hidden=!active;E('khAuthProgressText').textContent=message;E('khEmail').disabled=active;E('khPassword').disabled=active;E('khSignIn').disabled=active;E('khLoginSpinner').hidden=!active;E('khLoginText').textContent=active?'Проверяем…':'Войти'}
+function status(message,isError=false,hint=''){E('khGateStatus').textContent=message;E('khGateStatus').classList.toggle('khAuthError',isError);E('khAuthHint').textContent=hint}
+function safeError(error,context){
+ console.error(context,error);
+ const code=error?.code||'';
+ if(code==='permission-denied')return 'Firestore запрещает чтение. Проверьте опубликованные Security Rules и UID документа staff.';
+ if(code==='auth/invalid-credential'||code==='auth/wrong-password'||code==='auth/user-not-found')return 'Неверный email или пароль.';
+ if(code==='auth/too-many-requests')return 'Слишком много попыток входа. Попробуйте позже.';
+ if(code==='auth/network-request-failed'||code==='unavailable')return 'Ошибка сети. Проверьте интернет и повторите попытку.';
+ return 'Ошибка '+context+': '+(error?.message||code||'неизвестная ошибка')
+}
 const needUser=()=>{if(!currentUser||!approved)throw Error('Доступ сотрудника не подтверждён')};
+function resetStreams(){if(unsubscribeReceipts){unsubscribeReceipts();unsubscribeReceipts=null}if(unsubscribeStaff){unsubscribeStaff();unsubscribeStaff=null}}
 window.khCloudCreate=async c=>{needUser();return addDoc(collection(db,'receipts'),{created:c.created||new Date().toISOString(),createdBy:currentUser.uid,createdByEmail:currentUser.email||'',lines:c.lines,total:c.lines.reduce((n,l)=>n+(Number(l.price)||0)*l.qty,0),status:'open',updatedAt:serverTimestamp()})};
-window.khCloudSave=async c=>{needUser();await updateDoc(doc(db,'receipts',String(c.id)),{lines:c.lines,total:c.lines.reduce((n,l)=>n+(Number(l.price)||0)*l.qty,0),updatedAt:serverTimestamp()})};
-window.khCloudDelete=async id=>{needUser();if(window.khRole!=='admin')throw Error('Только администратор может удалять чеки');await deleteDoc(doc(db,'receipts',String(id)))};
-document.getElementById('khLoginForm').addEventListener('submit',async e=>{
- e.preventDefault();const button=document.getElementById('khSignIn');button.disabled=true;
- try{await signInWithEmailAndPassword(auth,document.getElementById('khEmail').value.trim(),document.getElementById('khPassword').value)}catch(ex){err(ex)}finally{button.disabled=false}
+window.khCloudSave=async c=>{needUser();return updateDoc(doc(db,'receipts',String(c.id)),{lines:c.lines,total:c.lines.reduce((n,l)=>n+(Number(l.price)||0)*l.qty,0),updatedAt:serverTimestamp()})};
+window.khCloudDelete=async id=>{needUser();if(window.khRole!=='admin')throw Error('Только администратор может удалять чеки');return deleteDoc(doc(db,'receipts',String(id)))};
+E('khLoginForm').addEventListener('submit',async event=>{
+ event.preventDefault();if(E('khSignIn').disabled)return;
+ progress(true,'Проверяем email и пароль…');status('Выполняется вход…');
+ try{await signInWithEmailAndPassword(auth,E('khEmail').value.trim(),E('khPassword').value)}
+ catch(ex){progress(false);status(safeError(ex,'входа'),true)}
 });
-document.getElementById('khLogout').onclick=()=>signOut(auth).catch(err);
-onAuthStateChanged(auth,async user=>{
- if(unsubscribe){unsubscribe();unsubscribe=null}
- currentUser=user;approved=false;window.khReceiptSnapshot([]);
- if(!user){window.khReceiptUser(null,false);return}
- try{
-  const staff=await getDoc(doc(db,'staff',user.uid));
-  approved=staff.exists()&&staff.data().active===true;
-  window.khReceiptUser(user,approved,approved?(staff.data().role||'waiter'):null);
-  if(!approved)return;
-  unsubscribe=onSnapshot(query(collection(db,'receipts'),orderBy('created','desc')),snap=>{
-    window.khReceiptSnapshot(snap.docs.map(d=>({id:d.id,...d.data()})))
-  },err);
- }catch(ex){err(ex);window.khReceiptUser(user,false)}
-});
+E('khLogout').onclick=async()=>{progress(true,'Выход из системы…');try{await signOut(auth)}catch(ex){progress(false);status(safeError(ex,'выхода'),true)}};
+onAuthStateChanged(auth,user=>{
+ const revision=++authRevision;
+ resetStreams();currentUser=user;approved=false;window.khReceiptSnapshot([]);
+ window.khReceiptsLoading(false,'');
+ window.khReceiptUser(user,false,null);
+ if(!user){progress(false);status('Введите email и пароль сотрудника.');return}
+ progress(true,'Проверяем доступ сотрудника…');status('Вход подтверждён. Проверяем роль в Firestore…');
+ let staffSeen=false;
+ unsubscribeStaff=onSnapshot(doc(db,'staff',user.uid),snapshot=>{
+  if(revision!==authRevision)return;
+  staffSeen=true;
+  const data=snapshot.exists()?snapshot.data():null;
+  approved=!!(data&&data.active===true);
+  window.khReceiptUser(user,approved,approved?(data.role||'waiter'):null);
+  if(!approved){
+   if(unsubscribeReceipts){unsubscribeReceipts();unsubscribeReceipts=null}
+   window.khReceiptSnapshot([]);
+   window.khReceiptsLoading(false,'');
+   progress(false);
+   const reason=!snapshot.exists()?'Документ сотрудника не найден.': 'Поле active не равно Boolean true.';
+   status('Вход выполнен, но доступ не разрешён.',true,'Причина: '+reason+' Откройте Firestore → staff → документ '+user.uid+'. Проверьте ID документа и active: true (boolean).');
+   return;
+  }
+  progress(false);status('Доступ разрешён');
+  if(unsubscribeReceipts)return;
+  window.khReceiptsLoading(true);
+  unsubscribeReceipts=onSnapshot(query(collection(db,'receipts'),orderBy('created','desc')),querySnapshot=>{
+   if(revision!==authRevision)return;
+   window.khReceiptSnapshot(querySnapshot.docs.map(d=>({id:d.id,...d.data()})));
+   window.khReceiptsLoading(false,'');
+  },error=>{
+   if(revision!==authRevision)return;
+   window.khReceiptsLoading(false,safeError(error,'загрузки чеков'));
+  });
+ },error=>{
+  if(revision!==authRevision)return;
+  resetStreams();approved=false;window.khReceiptUser(user,false,null);progress(false);
+  status(safeError(error,'проверки сотрудника'),true,'UID: '+user.uid+'. Проверьте Firestore Security Rules и то, что база данных принадлежит проекту '+firebaseConfig.projectId+'.');
+ });
+},error=>{progress(false);status(safeError(error,'инициализации авторизации'),true)});
 </script></body></html>
