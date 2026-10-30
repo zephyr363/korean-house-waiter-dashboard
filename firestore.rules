@@ -1,0 +1,29 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function staffAllowed() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/staff/$(request.auth.uid))
+        && get(/databases/$(database)/documents/staff/$(request.auth.uid)).data.active == true;
+    }
+    match /staff/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
+    }
+    match /receipts/{receiptId} {
+      allow read: if staffAllowed();
+      allow create: if staffAllowed()
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.status == 'open'
+        && request.resource.data.lines is list
+        && request.resource.data.total is number;
+      allow update: if staffAllowed()
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.created == resource.data.created
+        && request.resource.data.lines is list
+        && request.resource.data.total is number;
+      allow delete: if staffAllowed();
+    }
+    match /{document=**} {allow read, write: if false;}
+  }
+}
