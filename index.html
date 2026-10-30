@@ -71,14 +71,39 @@ body.khMenuOpen #khShade{display:block;position:fixed;inset:0;background:#0009;z
 .rcQty button{width:38px;height:38px}
 .rcRow>.rcBtn{min-width:96px}
 }
-</style></head><body><aside id="khSidebar" class="khSidebar">
+</style><style>
+#khAuthOverlay{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at 50% 0%,#28443d 0%,#0b1315 65%);padding:20px;overflow-y:auto}
+#khAuthOverlay[hidden]{display:none!important}
+.khAuthInner{width:min(100%,440px);margin:auto;text-align:center}
+.khAuthLogo{display:grid;place-items:center;margin:0 auto 12px;width:62px;height:62px;background:#e6b76e;color:#142023;border-radius:17px;font-weight:900;font-size:24px}
+.khAuthInner h1{font-size:30px;margin:4px 0 3px;color:#f6f6ed}
+.khAuthIntro{color:#a7b8b4;margin:0 0 22px}
+#khAuthOverlay #khGate{text-align:left;border:1px solid #33494a;border-radius:18px;padding:23px;background:#142225;box-shadow:0 25px 70px #0006}
+#khAuthOverlay #khLoginForm{flex-direction:column!important}
+#khAuthOverlay #khLoginForm .rcInput{width:100%!important;flex:unset!important;min-height:48px}
+#khAuthOverlay #khSignIn{width:100%;min-height:48px}
+#khAuthOverlay #khGateStatus{min-height:20px}
+body.khAuthPending{overflow:hidden}
+@media(max-width:550px){#khAuthOverlay{padding:14px}#khAuthOverlay #khGate{padding:20px 16px}}
+</style></head><body class="khAuthPending"><div id="khAuthOverlay" role="dialog" aria-modal="true" aria-labelledby="khAuthTitle"><div class="khAuthInner"><div class="khAuthLogo">KH</div><h1 id="khAuthTitle">Korean House</h1><p class="khAuthIntro">Войдите в систему, чтобы открыть панель официанта</p><div id="khGate" class="rcBox" >
+<h2 style="margin:0 0 9px;font-size:18px">🔐 Вход для сотрудников Korean House</h2>
+<p id="khGateStatus" class="rcSmall">Подключение к Firebase…</p>
+<form id="khLoginForm" style="display:flex;flex-wrap:wrap;gap:9px;margin-top:12px">
+<input required type="email" id="khEmail" class="rcInput" style="flex:1 1 190px;width:auto" placeholder="Email сотрудника" autocomplete="username">
+<input required type="password" id="khPassword" class="rcInput" style="flex:1 1 160px;width:auto" placeholder="Пароль" autocomplete="current-password">
+<button class="rcBtn" id="khSignIn" type="submit">Войти</button>
+
+</form>
+<div class="rcSmall" style="margin-top:9px">Доступ открывает администратор. Регистрация новых сотрудников на сайте отключена.</div>
+</div></div></div>
+<aside id="khSidebar" class="khSidebar">
 <div class="khSideBrand"><span class="khLogo">KH</span><span><b>KOREAN HOUSE</b><small>Панель официанта</small></span></div>
 <div class="khNavLabel">РАБОЧЕЕ МЕСТО</div>
 <button class="khNav active" data-page="training">📚 <span>Обучение и тест</span></button>
 <button class="khNav" data-page="menu">🔎 <span>Каталог меню</span></button>
 <button class="khNav" data-page="create">➕ <span>Создать чек</span></button>
 <button class="khNav" data-page="checks">🧾 <span>Активные чеки</span><span id="khChecksCount" class="khCount">0</span></button>
-<div class="khSideFoot">Состав • Острота • Подача</div>
+<button id="khLogout" class="khNav" type="button">🚪 <span>Выйти из системы</span></button><div class="khSideFoot">Состав • Острота • Подача</div>
 </aside>
 <div class="khMobileBar"><button id="khToggle" aria-label="Открыть меню">☰</button><strong>KOREAN HOUSE</strong><button id="khMobileChecks" aria-label="Открыть чеки">🧾</button></div>
 <div id="khShade"></div>
@@ -119,17 +144,6 @@ $('#retry').onclick=()=>begin(shuffle([...lastPool]));$('#wrongRetry').onclick=(
 <section id="receiptScreen" aria-label="Работа с чеками">
 <div class="rcWrap">
   <header class="rcHead"><div><h1 class="rcTitle">🧾 Korean House · Чеки</h1><div class="rcSmall">Поиск блюд, формирование чеков и пересчёт суммы</div></div><button id="rcClose" class="rcBtn rcGhost">← К тесту</button></header>
-  <div id="khGate" class="rcBox" style="margin-bottom:16px;display:block">
-<h2 style="margin:0 0 9px;font-size:18px">🔐 Доступ к общим чекам</h2>
-<p id="khGateStatus" class="rcSmall">Подключение к Firebase…</p>
-<form id="khLoginForm" style="display:flex;flex-wrap:wrap;gap:9px;margin-top:12px">
-<input required type="email" id="khEmail" class="rcInput" style="flex:1 1 190px;width:auto" placeholder="Email сотрудника" autocomplete="username">
-<input required type="password" id="khPassword" class="rcInput" style="flex:1 1 160px;width:auto" placeholder="Пароль" autocomplete="current-password">
-<button class="rcBtn" id="khSignIn" type="submit">Войти</button>
-<button class="rcBtn rcGhost" id="khSignOut" type="button">Выйти</button>
-</form>
-<div class="rcSmall" style="margin-top:9px">Доступ открывает администратор. Регистрация новых сотрудников на сайте отключена.</div>
-</div>
   <nav class="rcTabs"><button class="rcTab selected" id="rcTabEdit">Создание чека</button><button class="rcTab" id="rcTabList">Активные чеки <span id="rcCount"></span></button></nav>
   <div id="rcEditView" class="rcGrid">
     <section class="rcBox"><h2 style="margin:0 0 12px;font-size:19px">Поиск по меню</h2><input id="rcSearch" class="rcInput" placeholder="Введите название блюда…" autocomplete="off"><div class="rcSmall" style="margin-top:8px">Нажмите на блюдо — оно сразу добавится в текущий чек.</div><div id="rcResults" class="rcResults"></div></section>
@@ -154,7 +168,7 @@ const persist=()=>{
 };
 function showCloudError(e){console.error(e);alert('Не удалось сохранить изменения в Firestore: '+(e?.message||e))}
 window.khReceiptSnapshot=(checks)=>{state.checks=checks;render()};
-window.khReceiptUser=(user,approved,role)=>{window.khApproved=approved;window.khRole=role||null;document.getElementById('khGate').style.display=approved?'none':'block';document.getElementById('khGateStatus').textContent=!user?'Войдите в учётную запись официанта.':approved?'':'Аккаунт есть, но доступ не разрешён. Попросите администратора добавить UID в коллекцию staff.';render()};
+window.khReceiptUser=(user,approved,role)=>{window.khApproved=approved;window.khRole=role||null;document.getElementById('khAuthOverlay').hidden=!!approved;document.body.classList.toggle('khAuthPending',!approved);document.body.classList.remove('khMenuOpen');document.getElementById('khGateStatus').textContent=!user?'Введите email и пароль сотрудника.':approved?'':'Вход выполнен, но доступ не разрешён. Попросите администратора добавить UID в коллекцию staff.';if(approved)document.getElementById('khPassword').value='';render()};
 window.khReceiptError=showCloudError;
 const itemKey=i=>i.cat+'|'+i.name;
 const hasPrice=i=>typeof i.price==='number'&&Number.isFinite(i.price);
@@ -241,7 +255,7 @@ document.getElementById('khLoginForm').addEventListener('submit',async e=>{
  e.preventDefault();const button=document.getElementById('khSignIn');button.disabled=true;
  try{await signInWithEmailAndPassword(auth,document.getElementById('khEmail').value.trim(),document.getElementById('khPassword').value)}catch(ex){err(ex)}finally{button.disabled=false}
 });
-document.getElementById('khSignOut').onclick=()=>signOut(auth).catch(err);
+document.getElementById('khLogout').onclick=()=>signOut(auth).catch(err);
 onAuthStateChanged(auth,async user=>{
  if(unsubscribe){unsubscribe();unsubscribe=null}
  currentUser=user;approved=false;window.khReceiptSnapshot([]);
